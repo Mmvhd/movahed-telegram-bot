@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import threading
+import base64
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import requests
@@ -111,7 +112,6 @@ SUBJECTS = {
         ("physics3", "فیزیک (3)"),
     ],
 
-
     # =====================================================
     # MATHEMATICS
     # =====================================================
@@ -153,7 +153,6 @@ SUBJECTS = {
         ("calculus2", "حسابان (2)"),
         ("discrete_math", "ریاضیات گسسته"),
     ],
-
 
     # =====================================================
     # HUMANITIES
@@ -223,6 +222,7 @@ def load_files():
     """
     خواندن files.json از GitHub
     """
+
     if not GITHUB_TOKEN:
         logger.error("GITHUB_TOKEN is missing")
         return {}
@@ -242,8 +242,6 @@ def load_files():
 
         data = response.json()
 
-        import base64
-
         content = base64.b64decode(
             data["content"].replace("\n", "")
         ).decode("utf-8")
@@ -254,7 +252,10 @@ def load_files():
         return json.loads(content)
 
     except Exception as e:
-        logger.exception("Could not load files.json: %s", e)
+        logger.exception(
+            "Could not load files.json: %s",
+            e,
+        )
         return {}
 
 
@@ -266,8 +267,6 @@ def save_files(data):
     if not GITHUB_TOKEN:
         logger.error("GITHUB_TOKEN is missing")
         return False
-
-    import base64
 
     try:
         old = requests.get(
@@ -281,6 +280,7 @@ def save_files(data):
 
         if old.status_code == 200:
             sha = old.json().get("sha")
+
         elif old.status_code != 404:
             old.raise_for_status()
 
@@ -315,7 +315,10 @@ def save_files(data):
         return True
 
     except Exception as e:
-        logger.exception("Could not save files.json: %s", e)
+        logger.exception(
+            "Could not save files.json: %s",
+            e,
+        )
         return False
 
 
@@ -379,7 +382,10 @@ async def edit_message(query, text, keyboard):
 # START
 # =========================================================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     text = (
         "🎓 آکادمی مشاوره موحد\n\n"
         "به ربات آکادمی خوش آمدید.\n"
@@ -392,7 +398,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def home_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def home_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     await start(update, context)
 
 
@@ -493,7 +502,12 @@ async def show_user_types(query, field, grade):
     )
 
 
-async def show_user_subjects(query, field, grade, type_code):
+async def show_user_subjects(
+    query,
+    field,
+    grade,
+    type_code,
+):
     subjects = SUBJECTS.get(
         (field, grade, type_code),
         [],
@@ -505,7 +519,10 @@ async def show_user_subjects(query, field, grade, type_code):
         keyboard.append([
             InlineKeyboardButton(
                 title,
-                callback_data=f"usub_{field}_{grade}_{type_code}_{code}",
+                callback_data=(
+                    f"usub_{field}_{grade}_"
+                    f"{type_code}_{code}"
+                ),
             )
         ])
 
@@ -559,6 +576,10 @@ async def show_user_years(
     )
 
 
+# =========================================================
+# SEND FINAL FILE
+# =========================================================
+
 async def send_final_file(
     query,
     field,
@@ -593,24 +614,49 @@ async def send_final_file(
         return
 
     try:
-        await query.answer("در حال ارسال فایل...")
+        await query.answer(
+            "در حال ارسال فایل..."
+        )
 
         await query.message.reply_text(
             "📥 فایل در حال ارسال است..."
         )
 
-        await query.message.bot.copy_message(
+        # =================================================
+        # FIX:
+        # Message object دارای bot نیست.
+        # باید از خود CallbackQuery، bot را بگیریم.
+        # =================================================
+
+        await query.get_bot().copy_message(
             chat_id=query.message.chat_id,
             from_chat_id=ARCHIVE_CHAT_ID,
             message_id=int(archive_message_id),
         )
 
-    except Exception as e:
-        logger.exception("Could not send file: %s", e)
-
-        await query.message.reply_text(
-            "❌ ارسال فایل انجام نشد."
+        logger.info(
+            "File sent successfully: key=%s archive_message_id=%s",
+            key,
+            archive_message_id,
         )
+
+    except Exception as e:
+        logger.exception(
+            "Could not send file: %s",
+            e,
+        )
+
+        # برای ادمین، خطای دقیق را نمایش می‌دهیم
+        if query.from_user and is_admin(query.from_user.id):
+            await query.message.reply_text(
+                "❌ ارسال فایل انجام نشد.\n\n"
+                "خطای فنی:\n"
+                f"{type(e).__name__}: {e}"
+            )
+        else:
+            await query.message.reply_text(
+                "❌ ارسال فایل انجام نشد."
+            )
 
 
 # =========================================================
@@ -622,13 +668,13 @@ async def user_callback(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
-    await query.answer()
-
     data = query.data
 
     # ---------------- HOME ----------------
 
     if data == "home":
+        await query.answer()
+
         await query.edit_message_text(
             "🎓 آکادمی مشاوره موحد\n\n"
             "بخش موردنظر را انتخاب کنید:",
@@ -639,20 +685,39 @@ async def user_callback(
     # ---------------- FINAL EXAMS ----------------
 
     if data == "final_exams":
+        await query.answer()
         await show_final_fields(query)
         return
 
     if data.startswith("ufield_"):
-        field = data.replace("ufield_", "", 1)
-        await show_user_grades(query, field)
+        await query.answer()
+
+        field = data.replace(
+            "ufield_",
+            "",
+            1,
+        )
+
+        if field not in FIELDS:
+            return
+
+        await show_user_grades(
+            query,
+            field,
+        )
         return
 
     if data.startswith("ugrade_"):
+        await query.answer()
+
         parts = data.split("_")
 
         if len(parts) == 3:
             field = parts[1]
             grade = parts[2]
+
+            if field not in FIELDS or grade not in GRADES:
+                return
 
             await show_user_types(
                 query,
@@ -663,12 +728,21 @@ async def user_callback(
         return
 
     if data.startswith("utype_"):
+        await query.answer()
+
         parts = data.split("_")
 
         if len(parts) == 4:
             field = parts[1]
             grade = parts[2]
             type_code = parts[3]
+
+            if (
+                field not in FIELDS
+                or grade not in GRADES
+                or type_code not in TYPES
+            ):
+                return
 
             await show_user_subjects(
                 query,
@@ -680,6 +754,8 @@ async def user_callback(
         return
 
     if data.startswith("usub_"):
+        await query.answer()
+
         parts = data.split("_")
 
         if len(parts) >= 5:
@@ -687,6 +763,13 @@ async def user_callback(
             grade = parts[2]
             type_code = parts[3]
             subject_code = "_".join(parts[4:])
+
+            if (
+                field not in FIELDS
+                or grade not in GRADES
+                or type_code not in TYPES
+            ):
+                return
 
             await show_user_years(
                 query,
@@ -722,6 +805,8 @@ async def user_callback(
     # ---------------- OTHER MAIN SECTIONS ----------------
 
     if data == "mock_exams":
+        await query.answer()
+
         await query.edit_message_text(
             "📝 آزمون‌های آزمایشی مجموعه\n\n"
             "این بخش به‌زودی تکمیل می‌شود.",
@@ -737,6 +822,8 @@ async def user_callback(
         return
 
     if data == "notes":
+        await query.answer()
+
         await query.edit_message_text(
             "📖 جزوات\n\n"
             "جزوات موجود در این بخش نمایش داده می‌شوند.",
@@ -752,6 +839,8 @@ async def user_callback(
         return
 
     if data == "news":
+        await query.answer()
+
         await query.edit_message_text(
             "📢 اطلاعیه‌ها\n\n"
             "اطلاعیه‌های آکادمی در این بخش قرار می‌گیرند.",
@@ -818,7 +907,6 @@ async def admin_panel_callback(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
-    await query.answer()
 
     if not is_admin(update.effective_user.id):
         await query.answer(
@@ -826,6 +914,8 @@ async def admin_panel_callback(
             show_alert=True,
         )
         return
+
+    await query.answer()
 
     await query.edit_message_text(
         "👑 پنل مدیریت\n\n"
@@ -871,7 +961,6 @@ async def admin_add_callback(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
-    await query.answer()
 
     if not is_admin(update.effective_user.id):
         await query.answer(
@@ -879,6 +968,8 @@ async def admin_add_callback(
             show_alert=True,
         )
         return ConversationHandler.END
+
+    await query.answer()
 
     await query.edit_message_text(
         "➕ افزودن محتوا\n\n"
@@ -923,10 +1014,15 @@ async def admin_final_callback(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
-    await query.answer()
 
     if not is_admin(update.effective_user.id):
+        await query.answer(
+            "⛔ دسترسی ندارید.",
+            show_alert=True,
+        )
         return ConversationHandler.END
+
+    await query.answer()
 
     await query.edit_message_text(
         "📚 افزودن امتحان نهایی\n\n"
@@ -965,6 +1061,14 @@ async def admin_field_callback(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
+
+    if not is_admin(update.effective_user.id):
+        await query.answer(
+            "⛔ دسترسی ندارید.",
+            show_alert=True,
+        )
+        return
+
     await query.answer()
 
     field = query.data.replace(
@@ -1006,12 +1110,26 @@ async def admin_grade_callback(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
+
+    if not is_admin(update.effective_user.id):
+        await query.answer(
+            "⛔ دسترسی ندارید.",
+            show_alert=True,
+        )
+        return
+
     await query.answer()
 
     parts = query.data.split("_")
 
+    if len(parts) != 3:
+        return
+
     field = parts[1]
     grade = parts[2]
+
+    if field not in FIELDS or grade not in GRADES:
+        return
 
     await query.edit_message_text(
         "نوع درس را انتخاب کنید:",
@@ -1047,13 +1165,31 @@ async def admin_type_callback(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
+
+    if not is_admin(update.effective_user.id):
+        await query.answer(
+            "⛔ دسترسی ندارید.",
+            show_alert=True,
+        )
+        return
+
     await query.answer()
 
     parts = query.data.split("_")
 
+    if len(parts) != 4:
+        return
+
     field = parts[1]
     grade = parts[2]
     type_code = parts[3]
+
+    if (
+        field not in FIELDS
+        or grade not in GRADES
+        or type_code not in TYPES
+    ):
+        return
 
     subjects = SUBJECTS.get(
         (field, grade, type_code),
@@ -1093,14 +1229,32 @@ async def admin_subject_callback(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
+
+    if not is_admin(update.effective_user.id):
+        await query.answer(
+            "⛔ دسترسی ندارید.",
+            show_alert=True,
+        )
+        return ConversationHandler.END
+
     await query.answer()
 
     parts = query.data.split("_")
+
+    if len(parts) < 5:
+        return ConversationHandler.END
 
     field = parts[1]
     grade = parts[2]
     type_code = parts[3]
     subject_code = "_".join(parts[4:])
+
+    if (
+        field not in FIELDS
+        or grade not in GRADES
+        or type_code not in TYPES
+    ):
+        return ConversationHandler.END
 
     context.user_data["upload_meta"] = {
         "category": "final",
@@ -1140,16 +1294,24 @@ async def admin_year_callback(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
-    await query.answer()
 
     if not is_admin(update.effective_user.id):
+        await query.answer(
+            "⛔ دسترسی ندارید.",
+            show_alert=True,
+        )
         return ConversationHandler.END
+
+    await query.answer()
 
     year = query.data.replace(
         "ayear_",
         "",
         1,
     )
+
+    if year not in YEARS:
+        return ConversationHandler.END
 
     meta = context.user_data.get("upload_meta")
 
@@ -1185,13 +1347,13 @@ async def admin_receive_file(
     if not is_admin(update.effective_user.id):
         return ConversationHandler.END
 
-    document = update.message.document
-
-    if not document:
+    if not update.message or not update.message.document:
         await update.message.reply_text(
             "❌ لطفاً فایل را به صورت Document ارسال کن."
         )
         return ADMIN_FILE
+
+    document = update.message.document
 
     meta = context.user_data.get("upload_meta")
 
@@ -1222,8 +1384,16 @@ async def admin_receive_file(
         try:
             await context.bot.delete_message(
                 chat_id=ARCHIVE_CHAT_ID,
-                message_id=int(old_item["message_id"]),
+                message_id=int(
+                    old_item["message_id"]
+                ),
             )
+
+            logger.info(
+                "Old archive message deleted: %s",
+                old_item["message_id"],
+            )
+
         except Exception as e:
             logger.warning(
                 "Could not delete old archive message: %s",
@@ -1234,11 +1404,25 @@ async def admin_receive_file(
     # کپی فایل به کانال آرشیو
     # -----------------------------------------
 
-    copied = await context.bot.copy_message(
-        chat_id=ARCHIVE_CHAT_ID,
-        from_chat_id=update.effective_chat.id,
-        message_id=update.message.message_id,
-    )
+    try:
+        copied = await context.bot.copy_message(
+            chat_id=ARCHIVE_CHAT_ID,
+            from_chat_id=update.effective_chat.id,
+            message_id=update.message.message_id,
+        )
+
+    except Exception as e:
+        logger.exception(
+            "Could not copy file to archive: %s",
+            e,
+        )
+
+        await update.message.reply_text(
+            "❌ انتقال فایل به آرشیو انجام نشد.\n\n"
+            f"خطای فنی: {type(e).__name__}: {e}"
+        )
+
+        return ADMIN_FILE
 
     # -----------------------------------------
     # ذخیره metadata
@@ -1261,6 +1445,7 @@ async def admin_receive_file(
             "⚠️ فایل به آرشیو منتقل شد، "
             "ولی ذخیره اطلاعات در GitHub ناموفق بود."
         )
+
         return ConversationHandler.END
 
     await update.message.reply_text(
@@ -1270,7 +1455,10 @@ async def admin_receive_file(
         "🗂 اطلاعات در GitHub ذخیره شد."
     )
 
-    context.user_data.pop("upload_meta", None)
+    context.user_data.pop(
+        "upload_meta",
+        None,
+    )
 
     return ConversationHandler.END
 
@@ -1280,6 +1468,7 @@ async def admin_cancel(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
+
     await query.answer()
 
     context.user_data.pop(
@@ -1317,17 +1506,24 @@ async def admin_other_content(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
-    await query.answer()
 
     if not is_admin(update.effective_user.id):
+        await query.answer(
+            "⛔ دسترسی ندارید.",
+            show_alert=True,
+        )
         return
+
+    await query.answer()
 
     category = query.data
 
     if category == "amock":
         title = "📝 آزمون‌های آزمایشی"
+
     elif category == "anotes":
         title = "📖 جزوات"
+
     else:
         title = "بخش"
 
@@ -1352,10 +1548,15 @@ async def admin_add_news(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
-    await query.answer()
 
     if not is_admin(update.effective_user.id):
+        await query.answer(
+            "⛔ دسترسی ندارید.",
+            show_alert=True,
+        )
         return
+
+    await query.answer()
 
     await query.edit_message_text(
         "📢 افزودن اطلاعیه\n\n"
@@ -1381,10 +1582,15 @@ async def admin_status(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
-    await query.answer()
 
     if not is_admin(update.effective_user.id):
+        await query.answer(
+            "⛔ دسترسی ندارید.",
+            show_alert=True,
+        )
         return
+
+    await query.answer()
 
     data = load_files()
 
@@ -1399,10 +1605,13 @@ async def admin_status(
 
         if category == "final":
             final_count += 1
+
         elif category == "mock":
             mock_count += 1
+
         elif category == "notes":
             notes_count += 1
+
         elif category == "news":
             news_count += 1
 
@@ -1492,10 +1701,11 @@ async def admin_callback_router(
         return
 
     if data.startswith("asub_"):
-        await admin_subject_callback(
-            update,
-            context,
-        )
+        # این callback باید توسط ConversationHandler مدیریت شود
+        return
+
+    if data.startswith("ayear_"):
+        # این callback باید توسط ConversationHandler مدیریت شود
         return
 
     if data == "amock" or data == "anotes":
@@ -1528,11 +1738,14 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.send_response(200)
+
         self.send_header(
             "Content-Type",
             "text/plain; charset=utf-8",
         )
+
         self.end_headers()
+
         self.wfile.write(
             b"Movahed Telegram Bot is running."
         )
@@ -1542,6 +1755,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 
 def run_health_server():
+
     port = int(
         os.environ.get(
             "PORT",
@@ -1578,7 +1792,10 @@ def main():
             "GITHUB_TOKEN is not configured."
         )
 
+    # -----------------------------------------
     # Render health server
+    # -----------------------------------------
+
     threading.Thread(
         target=run_health_server,
         daemon=True,
@@ -1605,14 +1822,17 @@ def main():
 
         states={
             ADMIN_FILE: [
+
                 CallbackQueryHandler(
                     admin_year_callback,
                     pattern=r"^ayear_",
                 ),
+
                 MessageHandler(
                     filters.Document.ALL,
                     admin_receive_file,
                 ),
+
                 CallbackQueryHandler(
                     admin_cancel,
                     pattern=r"^admin_cancel$",
@@ -1625,6 +1845,7 @@ def main():
                 "cancel",
                 admin_cancel,
             ),
+
             CallbackQueryHandler(
                 admin_cancel,
                 pattern=r"^admin_cancel$",
@@ -1672,7 +1893,7 @@ def main():
             admin_callback_router,
             pattern=(
                 r"^(admin_panel|admin_add|afinal|"
-                r"afield_|agrade_|atype_|asub_|"
+                r"afield_|agrade_|atype_|asub_|ayear_|"
                 r"amock|anotes|admin_add_news|admin_status)"
             ),
         )
@@ -1682,9 +1903,6 @@ def main():
     # USER CALLBACKS
     # =====================================================
 
-    # نکته مهم:
-    # اینجا عمداً $ نداریم تا ufield_exp و بقیه
-    # callbackهای دارای ادامه هم شناسایی شوند.
     application.add_handler(
         CallbackQueryHandler(
             user_callback,
