@@ -1,6 +1,5 @@
 import os
 import json
-import base64
 import logging
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -14,88 +13,39 @@ from telegram import (
 )
 from telegram.ext import (
     Application,
-    CallbackQueryHandler,
     CommandHandler,
-    ContextTypes,
+    CallbackQueryHandler,
     ConversationHandler,
     MessageHandler,
+    ContextTypes,
     filters,
 )
 
-
 # =========================================================
-# CONFIG
+# SETTINGS
 # =========================================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
-# مدیر اصلی ربات
 ADMIN_IDS = {7847705597}
 
-# کانال آرشیو خصوصی
+# کانال خصوصی آرشیو فایل‌ها
 ARCHIVE_CHAT_ID = -1003919894012
 
-# GitHub
 GITHUB_OWNER = "Mmvhd"
 GITHUB_REPO = "movahed-telegram-bot"
-GITHUB_BRANCH = "main"
 GITHUB_FILE = "files.json"
+GITHUB_BRANCH = "main"
 
-GITHUB_API = (
-    f"https://api.github.com/repos/"
-    f"{GITHUB_OWNER}/{GITHUB_REPO}/contents/{GITHUB_FILE}"
-)
-
-PORT = int(os.getenv("PORT", "10000"))
-
-
-# =========================================================
-# LOGGING
-# =========================================================
+YEARS = [str(y) for y in range(1404, 1397, -1)]
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 
-logging.getLogger("httpx").setLevel(logging.WARNING)
-
 logger = logging.getLogger(__name__)
-
-
-# =========================================================
-# RENDER HEALTH CHECK
-# =========================================================
-
-class HealthHandler(BaseHTTPRequestHandler):
-
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(b"Movahed Telegram Bot is running.")
-
-    def log_message(self, format, *args):
-        return
-
-
-def run_health_server():
-    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
-    server.serve_forever()
-
-
-# =========================================================
-# ADMIN
-# =========================================================
-
-def is_admin(update: Update) -> bool:
-    user = update.effective_user
-
-    if user is None:
-        return False
-
-    return user.id in ADMIN_IDS
 
 
 # =========================================================
@@ -103,277 +53,282 @@ def is_admin(update: Update) -> bool:
 # =========================================================
 
 FIELDS = {
-    "exp": "🔬 تجربی",
-    "math": "📐 ریاضی",
-    "hum": "📖 انسانی",
+    "exp": "تجربی",
+    "math": "ریاضی",
+    "hum": "انسانی",
 }
 
 GRADES = {
-    "11": "1️⃣1️⃣ یازدهم",
-    "12": "1️⃣2️⃣ دوازدهم",
+    "11": "یازدهم",
+    "12": "دوازدهم",
 }
 
 TYPES = {
-    "general": "📘 عمومی",
-    "special": "🧪 تخصصی",
+    "general": "عمومی",
+    "special": "اختصاصی",
 }
 
-
-# =========================================================
-# SUBJECTS
-# =========================================================
 
 SUBJECTS = {
 
-    # -----------------------------------------------------
-    # تجربی
-    # -----------------------------------------------------
+    # =====================================================
+    # EXPERIMENTAL
+    # =====================================================
 
     ("exp", "11", "general"): [
-        ("دین و زندگی (۲)", "religion2"),
-        ("فارسی (۲)", "persian2"),
-        ("هنر (۲)", "art2"),
-        ("عربی، زبان قرآن (۲)", "arabic2"),
-        ("زبان انگلیسی (۲)", "english2"),
-        ("تاریخ معاصر ایران", "contemporary_history"),
-        ("انسان و محیط زیست", "human_environment"),
+        ("religion2", "دین و زندگی (2)"),
+        ("persian2", "فارسی (2)"),
+        ("art2", "هنر (2)"),
+        ("arabic2", "عربی، زبان قرآن (2)"),
+        ("english2", "انگلیسی (2)"),
+        ("history_contemporary", "تاریخ معاصر ایران"),
+        ("human_environment", "انسان و محیط زیست"),
     ],
 
     ("exp", "11", "special"): [
-        ("زیست‌شناسی (۲)", "biology2"),
-        ("ریاضی (۲)", "math2"),
-        ("شیمی (۲)", "chemistry2"),
-        ("فیزیک (۲)", "physics2"),
-        ("آزمایشگاه علوم تجربی (۲)", "science_lab2"),
-        ("زمین‌شناسی", "geology"),
+        ("biology2", "زیست‌شناسی (2)"),
+        ("math2", "ریاضی (2)"),
+        ("chemistry2", "شیمی (2)"),
+        ("physics2", "فیزیک (2)"),
+        ("experimental_lab", "آزمایشگاه علوم تجربی (2)"),
+        ("geology", "زمین‌شناسی"),
     ],
 
     ("exp", "12", "general"): [
-        ("ادبیات فارسی (۳)", "persian3"),
-        ("دین و زندگی (۳)", "religion3"),
-        ("عربی، زبان قرآن (۳)", "arabic3"),
-        ("هویت اجتماعی", "social_identity"),
-        ("مدیریت خانواده و سبک زندگی", "family_lifestyle"),
-        ("زبان انگلیسی (۳)", "english3"),
-        ("سلامت و بهداشت", "health"),
+        ("persian3", "ادبیات فارسی (3)"),
+        ("religion3", "دین و زندگی (3)"),
+        ("arabic3", "عربی، زبان قرآن (3)"),
+        ("social_identity", "هویت اجتماعی"),
+        ("family_lifestyle", "مدیریت خانواده و سبک زندگی"),
+        ("english3", "انگلیسی (3)"),
+        ("health", "سلامت و بهداشت"),
     ],
 
     ("exp", "12", "special"): [
-        ("زیست‌شناسی (۳)", "biology3"),
-        ("ریاضی (۳)", "math3"),
-        ("شیمی (۳)", "chemistry3"),
-        ("فیزیک (۳)", "physics3"),
+        ("biology3", "زیست‌شناسی (3)"),
+        ("math3", "ریاضی (3)"),
+        ("chemistry3", "شیمی (3)"),
+        ("physics3", "فیزیک (3)"),
     ],
 
 
-    # -----------------------------------------------------
-    # ریاضی
-    # -----------------------------------------------------
+    # =====================================================
+    # MATHEMATICS
+    # =====================================================
 
     ("math", "11", "general"): [
-        ("ادبیات فارسی (۲)", "persian2"),
-        ("دین و زندگی (۲)", "religion2"),
-        ("عربی، زبان قرآن (۲)", "arabic2"),
-        ("هنر (۲)", "art2"),
-        ("تاریخ معاصر ایران (۲)", "contemporary_history2"),
-        ("زبان انگلیسی (۲)", "english2"),
-        ("تعلیمات ادیان الهی و اخلاق (۲)", "religious_ethics2"),
-        ("زمین‌شناسی", "geology"),
-        ("انسان و محیط زیست", "human_environment"),
+        ("persian2", "ادبیات فارسی (2)"),
+        ("religion2", "دین و زندگی (2)"),
+        ("arabic2", "عربی، زبان قرآن (2)"),
+        ("art2", "هنر (2)"),
+        ("history_contemporary2", "تاریخ معاصر ایران (2)"),
+        ("english2", "زبان انگلیسی (2)"),
+        ("religious_ethics2", "تعلیمات ادیان الهی و اخلاق (2)"),
+        ("geology", "زمین‌شناسی"),
+        ("human_environment", "انسان و محیط زیست"),
     ],
 
     ("math", "11", "special"): [
-        ("شیمی (۲)", "chemistry2"),
-        ("فیزیک (۲)", "physics2"),
-        ("هندسه (۲)", "geometry2"),
-        ("حسابان (۱)", "calculus1"),
-        ("آمار و احتمال", "statistics_probability"),
+        ("chemistry2", "شیمی (2)"),
+        ("physics2", "فیزیک (2)"),
+        ("geometry2", "هندسه (2)"),
+        ("calculus1", "حسابان (1)"),
+        ("statistics_probability", "آمار و احتمال"),
     ],
 
     ("math", "12", "general"): [
-        ("ادبیات فارسی (۳)", "persian3"),
-        ("دین و زندگی (۳)", "religion3"),
-        ("عربی، زبان قرآن (۳)", "arabic3"),
-        ("زبان انگلیسی (۳)", "english3"),
-        ("تعلیمات ادیان الهی و اخلاق (۳)", "religious_ethics3"),
-        ("سلامت و بهداشت", "health"),
-        ("هویت اجتماعی", "social_identity"),
+        ("persian3", "ادبیات فارسی (3)"),
+        ("religion3", "دین و زندگی (3)"),
+        ("arabic3", "عربی، زبان قرآن (3)"),
+        ("english3", "زبان انگلیسی (3)"),
+        ("religious_ethics3", "تعلیمات ادیان الهی و اخلاق (3)"),
+        ("health", "سلامت و بهداشت"),
+        ("social_identity", "هویت اجتماعی"),
     ],
 
     ("math", "12", "special"): [
-        ("شیمی (۳)", "chemistry3"),
-        ("فیزیک (۳)", "physics3"),
-        ("هندسه (۳)", "geometry3"),
-        ("حسابان (۲)", "calculus2"),
-        ("ریاضیات گسسته", "discrete_math"),
+        ("chemistry3", "شیمی (3)"),
+        ("physics3", "فیزیک (3)"),
+        ("geometry3", "هندسه (3)"),
+        ("calculus2", "حسابان (2)"),
+        ("discrete_math", "ریاضیات گسسته"),
     ],
 
 
-    # -----------------------------------------------------
-    # انسانی
-    # -----------------------------------------------------
+    # =====================================================
+    # HUMANITIES
+    # =====================================================
 
     ("hum", "11", "general"): [
-        ("فارسی (۲)", "persian2"),
-        ("دین و زندگی (۲)", "religion2"),
-        ("انسان و محیط زیست", "human_environment"),
-        ("زبان انگلیسی (۲)", "english2"),
-        ("هنر", "art"),
-        ("مدیریت خانواده و سبک زندگی", "family_lifestyle"),
+        ("persian2", "فارسی (2)"),
+        ("religion2", "دین و زندگی (2)"),
+        ("human_environment", "انسان و محیط زیست"),
+        ("english2", "زبان انگلیسی (2)"),
+        ("art", "هنر"),
+        ("family_lifestyle", "مدیریت خانواده و سبک زندگی"),
     ],
 
     ("hum", "11", "special"): [
-        ("ریاضی و آمار (۲)", "math_statistics2"),
-        ("عربی، زبان قرآن (۲)", "arabic2"),
-        ("علوم و فنون ادبی (۲)", "literary_sciences2"),
-        ("فلسفه", "philosophy"),
-        ("تاریخ (۲)", "history2"),
-        ("جغرافیای (۲)", "geography2"),
-        ("جامعه‌شناسی (۲)", "sociology2"),
-        ("روان‌شناسی", "psychology"),
+        ("math_statistics2", "ریاضی و آمار (2)"),
+        ("arabic2", "عربی، زبان قرآن (2)"),
+        ("literary_sciences2", "علوم و فنون ادبی (2)"),
+        ("philosophy", "فلسفه"),
+        ("history2", "تاریخ (2)"),
+        ("geography2", "جغرافیای (2)"),
+        ("sociology2", "جامعه‌شناسی (2)"),
+        ("psychology", "روانشناسی"),
     ],
 
     ("hum", "12", "general"): [
-        ("فارسی (۳)", "persian3"),
-        ("دین و زندگی (۳)", "religion3"),
-        ("تحلیل فرهنگی", "cultural_analysis"),
-        ("زبان انگلیسی (۳)", "english3"),
-        ("سلامت و بهداشت", "health"),
-        ("مدیریت خانواده و سبک زندگی", "family_lifestyle"),
+        ("persian3", "فارسی (3)"),
+        ("religion3", "دین و زندگی (3)"),
+        ("cultural_analysis", "تحلیل فرهنگی"),
+        ("english3", "زبان انگلیسی (3)"),
+        ("health", "سلامت و بهداشت"),
+        ("family_lifestyle", "مدیریت خانواده و سبک زندگی"),
     ],
 
     ("hum", "12", "special"): [
-        ("ریاضی و آمار (۳)", "math_statistics3"),
-        ("عربی، زبان قرآن (۳)", "arabic3"),
-        ("علوم و فنون ادبی (۳)", "literary_sciences3"),
-        ("فلسفه (۲)", "philosophy2"),
-        ("تاریخ (۳)", "history3"),
-        ("جغرافیای (۳)", "geography3"),
-        ("جامعه‌شناسی (۳)", "sociology3"),
+        ("math_statistics3", "ریاضی و آمار (3)"),
+        ("arabic3", "عربی، زبان قرآن (3)"),
+        ("literary_sciences3", "علوم و فنون ادبی (3)"),
+        ("philosophy2", "فلسفه (2)"),
+        ("history3", "تاریخ (3)"),
+        ("geography3", "جغرافیای (3)"),
+        ("sociology3", "جامعه‌شناسی (3)"),
     ],
 }
-
-
-YEARS = [
-    ("۱۴۰۴", "1404"),
-    ("۱۴۰۳", "1403"),
-    ("۱۴۰۲", "1402"),
-    ("۱۴۰۱", "1401"),
-    ("۱۴۰۰", "1400"),
-    ("۱۳۹۹", "1399"),
-    ("۱۳۹۸", "1398"),
-]
 
 
 # =========================================================
 # GITHUB
 # =========================================================
 
+def github_url():
+    return (
+        f"https://api.github.com/repos/"
+        f"{GITHUB_OWNER}/{GITHUB_REPO}/contents/{GITHUB_FILE}"
+    )
+
+
 def github_headers():
     return {
-        "Accept": "application/vnd.github+json",
         "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "X-GitHub-Api-Version": "2026-03-10",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
     }
 
 
-def github_get_files():
+def load_files():
     """
-    Returns:
-        files_dict, sha
+    خواندن files.json از GitHub
     """
+    if not GITHUB_TOKEN:
+        logger.error("GITHUB_TOKEN is missing")
+        return {}
 
     try:
         response = requests.get(
-            GITHUB_API,
+            github_url(),
             headers=github_headers(),
             params={"ref": GITHUB_BRANCH},
             timeout=20,
         )
 
         if response.status_code == 404:
-            return {}, None
+            return {}
 
         response.raise_for_status()
 
         data = response.json()
 
-        encoded = data.get("content", "").replace("\n", "")
+        import base64
 
-        if not encoded:
-            return {}, data.get("sha")
+        content = base64.b64decode(
+            data["content"].replace("\n", "")
+        ).decode("utf-8")
 
-        decoded = base64.b64decode(encoded).decode("utf-8")
+        if not content.strip():
+            return {}
 
-        if not decoded.strip():
-            return {}, data.get("sha")
+        return json.loads(content)
 
-        return json.loads(decoded), data.get("sha")
-
-    except Exception:
-        logger.exception("GitHub read error")
-        return {}, None
+    except Exception as e:
+        logger.exception("Could not load files.json: %s", e)
+        return {}
 
 
-def github_save_files(files, sha=None):
+def save_files(data):
     """
-    Create or update files.json on GitHub.
+    ذخیره files.json در GitHub
     """
 
-    content = json.dumps(
-        files,
-        ensure_ascii=False,
-        indent=2,
-    )
-
-    encoded = base64.b64encode(
-        content.encode("utf-8")
-    ).decode("utf-8")
-
-    payload = {
-        "message": "Update exam files metadata",
-        "content": encoded,
-        "branch": GITHUB_BRANCH,
-    }
-
-    if sha:
-        payload["sha"] = sha
-
-    response = requests.put(
-        GITHUB_API,
-        headers=github_headers(),
-        json=payload,
-        timeout=30,
-    )
-
-    if response.status_code not in (200, 201):
-        logger.error(
-            "GitHub save failed: %s %s",
-            response.status_code,
-            response.text,
-        )
-
+    if not GITHUB_TOKEN:
+        logger.error("GITHUB_TOKEN is missing")
         return False
 
-    return True
+    import base64
 
+    try:
+        old = requests.get(
+            github_url(),
+            headers=github_headers(),
+            params={"ref": GITHUB_BRANCH},
+            timeout=20,
+        )
 
-def make_file_key(field, grade, lesson_type, subject_code, year):
-    return "|".join([
-        field,
-        grade,
-        lesson_type,
-        subject_code,
-        year,
-    ])
+        sha = None
+
+        if old.status_code == 200:
+            sha = old.json().get("sha")
+        elif old.status_code != 404:
+            old.raise_for_status()
+
+        content = json.dumps(
+            data,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+        encoded = base64.b64encode(
+            content.encode("utf-8")
+        ).decode("utf-8")
+
+        payload = {
+            "message": "Update files metadata",
+            "content": encoded,
+            "branch": GITHUB_BRANCH,
+        }
+
+        if sha:
+            payload["sha"] = sha
+
+        response = requests.put(
+            github_url(),
+            headers=github_headers(),
+            json=payload,
+            timeout=30,
+        )
+
+        response.raise_for_status()
+
+        return True
+
+    except Exception as e:
+        logger.exception("Could not save files.json: %s", e)
+        return False
 
 
 # =========================================================
-# MAIN MENU
+# HELPERS
 # =========================================================
 
-def main_menu(update: Update):
-    keyboard = [
+def is_admin(user_id):
+    return user_id in ADMIN_IDS
+
+
+def main_menu(update):
+    buttons = [
         [
             InlineKeyboardButton(
                 "📝 آزمون‌های آزمایشی مجموعه",
@@ -400,30 +355,35 @@ def main_menu(update: Update):
         ],
     ]
 
-    if is_admin(update):
-        keyboard.append([
+    user = update.effective_user
+
+    if user and is_admin(user.id):
+        buttons.append([
             InlineKeyboardButton(
                 "👑 پنل مدیریت",
                 callback_data="admin_panel",
             )
         ])
 
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(buttons)
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-
-    logger.info(
-        "START | user_id=%s | username=%s | first_name=%s",
-        user.id if user else None,
-        user.username if user else None,
-        user.first_name if user else None,
+async def edit_message(query, text, keyboard):
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
+
+# =========================================================
+# START
+# =========================================================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "🎓 به آکادمی مشاوره موحد خوش آمدید.\n\n"
-        "از منوی زیر بخش موردنظر را انتخاب کنید."
+        "🎓 آکادمی مشاوره موحد\n\n"
+        "به ربات آکادمی خوش آمدید.\n"
+        "بخش موردنظر خود را انتخاب کنید:"
     )
 
     await update.message.reply_text(
@@ -432,875 +392,241 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def home_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await start(update, context)
+
+
 # =========================================================
-# FINAL EXAMS - USER SIDE
+# FINAL EXAMS - USER
 # =========================================================
 
-def final_fields_keyboard():
-    return InlineKeyboardMarkup([
+async def show_final_fields(query):
+    keyboard = [
         [
             InlineKeyboardButton(
-                FIELDS["exp"],
+                "🧬 تجربی",
                 callback_data="ufield_exp",
             )
         ],
         [
             InlineKeyboardButton(
-                FIELDS["math"],
+                "📐 ریاضی",
                 callback_data="ufield_math",
             )
         ],
         [
             InlineKeyboardButton(
-                FIELDS["hum"],
+                "📚 انسانی",
                 callback_data="ufield_hum",
             )
         ],
         [
             InlineKeyboardButton(
-                "↩️ بازگشت",
+                "🔙 بازگشت",
                 callback_data="home",
             )
         ],
-    ])
+    ]
+
+    await edit_message(
+        query,
+        "📚 امتحان‌های نهایی\n\nرشته را انتخاب کنید:",
+        keyboard,
+    )
 
 
-def final_grades_keyboard(field):
-    return InlineKeyboardMarkup([
+async def show_user_grades(query, field):
+    keyboard = [
         [
             InlineKeyboardButton(
-                GRADES["11"],
+                "یازدهم",
                 callback_data=f"ugrade_{field}_11",
             )
         ],
         [
             InlineKeyboardButton(
-                GRADES["12"],
+                "دوازدهم",
                 callback_data=f"ugrade_{field}_12",
             )
         ],
         [
             InlineKeyboardButton(
-                "↩️ بازگشت",
+                "🔙 بازگشت",
                 callback_data="final_exams",
             )
         ],
-    ])
+    ]
+
+    await edit_message(
+        query,
+        "پایه را انتخاب کنید:",
+        keyboard,
+    )
 
 
-def final_types_keyboard(field, grade):
-    return InlineKeyboardMarkup([
+async def show_user_types(query, field, grade):
+    keyboard = [
         [
             InlineKeyboardButton(
-                TYPES["general"],
+                "📘 عمومی",
                 callback_data=f"utype_{field}_{grade}_general",
             )
         ],
         [
             InlineKeyboardButton(
-                TYPES["special"],
+                "📕 اختصاصی",
                 callback_data=f"utype_{field}_{grade}_special",
             )
         ],
         [
             InlineKeyboardButton(
-                "↩️ بازگشت",
+                "🔙 بازگشت",
                 callback_data=f"ufield_{field}",
             )
         ],
-    ])
+    ]
+
+    await edit_message(
+        query,
+        "نوع درس را انتخاب کنید:",
+        keyboard,
+    )
 
 
-def subjects_keyboard(field, grade, lesson_type):
+async def show_user_subjects(query, field, grade, type_code):
     subjects = SUBJECTS.get(
-        (field, grade, lesson_type),
+        (field, grade, type_code),
         [],
     )
 
-    buttons = []
+    keyboard = []
 
-    for name, code in subjects:
-        buttons.append([
+    for code, title in subjects:
+        keyboard.append([
             InlineKeyboardButton(
-                name,
-                callback_data=(
-                    f"usub_{field}_{grade}_{lesson_type}_{code}"
-                ),
+                title,
+                callback_data=f"usub_{field}_{grade}_{type_code}_{code}",
             )
         ])
 
-    buttons.append([
+    keyboard.append([
         InlineKeyboardButton(
-            "↩️ بازگشت",
+            "🔙 بازگشت",
             callback_data=f"ugrade_{field}_{grade}",
         )
     ])
 
-    return InlineKeyboardMarkup(buttons)
+    await edit_message(
+        query,
+        "📚 درس موردنظر را انتخاب کنید:",
+        keyboard,
+    )
 
 
-def years_keyboard(field, grade, lesson_type, subject_code):
-    buttons = []
+async def show_user_years(
+    query,
+    field,
+    grade,
+    type_code,
+    subject_code,
+):
+    keyboard = []
 
-    for display_year, year_code in YEARS:
-        buttons.append([
+    for year in YEARS:
+        keyboard.append([
             InlineKeyboardButton(
-                display_year,
+                year,
                 callback_data=(
-                    f"uyear_{field}_{grade}_{lesson_type}_"
-                    f"{subject_code}_{year_code}"
+                    f"uyear_{field}_{grade}_"
+                    f"{type_code}_{subject_code}_{year}"
                 ),
             )
         ])
 
-    buttons.append([
+    keyboard.append([
         InlineKeyboardButton(
-            "↩️ بازگشت",
+            "🔙 بازگشت",
             callback_data=(
-                f"utype_{field}_{grade}_{lesson_type}"
+                f"utype_{field}_{grade}_{type_code}"
             ),
         )
     ])
 
-    return InlineKeyboardMarkup(buttons)
-
-
-async def show_final_exams(query):
-    await query.edit_message_text(
-        "📚 امتحان‌های نهایی\n\nرشته خود را انتخاب کنید:",
-        reply_markup=final_fields_keyboard(),
+    await edit_message(
+        query,
+        "📅 سال امتحان را انتخاب کنید:",
+        keyboard,
     )
 
 
-async def show_field(query, field):
-    await query.edit_message_text(
-        f"{FIELDS[field]}\n\nپایه را انتخاب کنید:",
-        reply_markup=final_grades_keyboard(field),
-    )
-
-
-async def show_grade(query, field, grade):
-    await query.edit_message_text(
-        f"{FIELDS[field]} → {GRADES[grade]}\n\n"
-        "نوع درس را انتخاب کنید:",
-        reply_markup=final_types_keyboard(field, grade),
-    )
-
-
-async def show_type(query, field, grade, lesson_type):
-    subjects = SUBJECTS.get(
-        (field, grade, lesson_type),
-        [],
-    )
-
-    if not subjects:
-        await query.edit_message_text(
-            "درسی برای این بخش ثبت نشده است.",
-            reply_markup=final_types_keyboard(field, grade),
-        )
-        return
-
-    await query.edit_message_text(
-        f"{FIELDS[field]} → {GRADES[grade]}\n"
-        f"{TYPES[lesson_type]}\n\n"
-        "درس را انتخاب کنید:",
-        reply_markup=subjects_keyboard(
-            field,
-            grade,
-            lesson_type,
-        ),
-    )
-
-
-async def show_subject(
+async def send_final_file(
     query,
     field,
     grade,
-    lesson_type,
-    subject_code,
-):
-    subject_name = next(
-        (
-            name
-            for name, code in SUBJECTS.get(
-                (field, grade, lesson_type),
-                [],
-            )
-            if code == subject_code
-        ),
-        subject_code,
-    )
-
-    await query.edit_message_text(
-        f"📚 {subject_name}\n\n"
-        "سال امتحان را انتخاب کنید:",
-        reply_markup=years_keyboard(
-            field,
-            grade,
-            lesson_type,
-            subject_code,
-        ),
-    )
-
-
-async def send_exam_file(
-    query,
-    context,
-    field,
-    grade,
-    lesson_type,
+    type_code,
     subject_code,
     year,
 ):
-    files, _ = github_get_files()
+    data = load_files()
 
-    key = make_file_key(
-        field,
-        grade,
-        lesson_type,
-        subject_code,
-        year,
+    key = (
+        f"final|{field}|{grade}|"
+        f"{type_code}|{subject_code}|{year}"
     )
 
-    item = files.get(key)
+    item = data.get(key)
 
     if not item:
-        await query.edit_message_text(
-            "❌ برای این درس و این سال هنوز فایلی ثبت نشده است.\n\n"
-            "سال دیگری را انتخاب کنید.",
-            reply_markup=years_keyboard(
-                field,
-                grade,
-                lesson_type,
-                subject_code,
-            ),
+        await query.answer(
+            "❌ فایل این بخش هنوز اضافه نشده.",
+            show_alert=True,
         )
         return
 
-    archive_message_id = item.get("archive_message_id")
+    archive_message_id = item.get("message_id")
 
     if not archive_message_id:
-        await query.edit_message_text(
-            "❌ اطلاعات فایل ناقص است و فایل آرشیو پیدا نشد.",
-            reply_markup=years_keyboard(
-                field,
-                grade,
-                lesson_type,
-                subject_code,
-            ),
+        await query.answer(
+            "❌ فایل پیدا نشد.",
+            show_alert=True,
         )
         return
 
     try:
-        await context.bot.copy_message(
-            chat_id=query.from_user.id,
+        await query.answer("در حال ارسال فایل...")
+
+        await query.message.reply_text(
+            "📥 فایل در حال ارسال است..."
+        )
+
+        await query.message.bot.copy_message(
+            chat_id=query.message.chat_id,
             from_chat_id=ARCHIVE_CHAT_ID,
             message_id=int(archive_message_id),
         )
 
-        await query.message.reply_text(
-            "✅ فایل برای شما ارسال شد.",
-            reply_markup=years_keyboard(
-                field,
-                grade,
-                lesson_type,
-                subject_code,
-            ),
-        )
-
-    except Exception:
-        logger.exception("File sending error")
+    except Exception as e:
+        logger.exception("Could not send file: %s", e)
 
         await query.message.reply_text(
-            "❌ ارسال فایل انجام نشد.\n"
-            "احتمالاً فایل آرشیو حذف شده یا دسترسی ربات به کانال مشکل دارد.",
-            reply_markup=years_keyboard(
-                field,
-                grade,
-                lesson_type,
-                subject_code,
-            ),
+            "❌ ارسال فایل انجام نشد."
         )
 
 
 # =========================================================
-# ADMIN PANEL
+# USER CALLBACK
 # =========================================================
 
-def admin_menu():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "➕ افزودن فایل",
-                callback_data="admin_add",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📊 وضعیت فایل‌ها",
-                callback_data="admin_status",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🏠 منوی اصلی",
-                callback_data="home",
-            )
-        ],
-    ])
-
-
-def admin_fields_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                FIELDS["exp"],
-                callback_data="afield_exp",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                FIELDS["math"],
-                callback_data="afield_math",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                FIELDS["hum"],
-                callback_data="afield_hum",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "❌ لغو",
-                callback_data="admin_panel",
-            )
-        ],
-    ])
-
-
-def admin_grades_keyboard(field):
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                GRADES["11"],
-                callback_data=f"agrade_{field}_11",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                GRADES["12"],
-                callback_data=f"agrade_{field}_12",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "↩️ بازگشت",
-                callback_data="admin_add",
-            )
-        ],
-    ])
-
-
-def admin_types_keyboard(field, grade):
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                TYPES["general"],
-                callback_data=f"atype_{field}_{grade}_general",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                TYPES["special"],
-                callback_data=f"atype_{field}_{grade}_special",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "↩️ بازگشت",
-                callback_data=f"afield_{field}",
-            )
-        ],
-    ])
-
-
-def admin_subjects_keyboard(field, grade, lesson_type):
-    subjects = SUBJECTS.get(
-        (field, grade, lesson_type),
-        [],
-    )
-
-    buttons = []
-
-    for name, code in subjects:
-        buttons.append([
-            InlineKeyboardButton(
-                name,
-                callback_data=(
-                    f"asub_{field}_{grade}_{lesson_type}_{code}"
-                ),
-            )
-        ])
-
-    buttons.append([
-        InlineKeyboardButton(
-            "↩️ بازگشت",
-            callback_data=f"agrade_{field}_{grade}",
-        )
-    ])
-
-    return InlineKeyboardMarkup(buttons)
-
-
-def admin_years_keyboard(
-    field,
-    grade,
-    lesson_type,
-    subject_code,
-):
-    buttons = []
-
-    for display_year, year_code in YEARS:
-        buttons.append([
-            InlineKeyboardButton(
-                display_year,
-                callback_data=(
-                    f"ayear_{field}_{grade}_{lesson_type}_"
-                    f"{subject_code}_{year_code}"
-                ),
-            )
-        ])
-
-    buttons.append([
-        InlineKeyboardButton(
-            "↩️ بازگشت",
-            callback_data=(
-                f"atype_{field}_{grade}_{lesson_type}"
-            ),
-        )
-    ])
-
-    return InlineKeyboardMarkup(buttons)
-
-
-async def admin_panel(update, context):
-    if not is_admin(update):
-        return
-
-    query = update.callback_query
-
-    await query.edit_message_text(
-        "👑 پنل مدیریت\n\n"
-        "از این قسمت می‌توانید فایل‌های امتحان نهایی را "
-        "بدون دست‌زدن به کد اضافه یا جایگزین کنید.",
-        reply_markup=admin_menu(),
-    )
-
-
-async def admin_add_start(update, context):
-    if not is_admin(update):
-        return
-
-    query = update.callback_query
-
-    await query.edit_message_text(
-        "➕ افزودن فایل\n\n"
-        "رشته را انتخاب کنید:",
-        reply_markup=admin_fields_keyboard(),
-    )
-
-
-# =========================================================
-# ADMIN CONVERSATION STATES
-# =========================================================
-
-ADMIN_FILE = 1
-
-
-async def admin_receive_file(
+async def user_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-    if not is_admin(update):
-        return ConversationHandler.END
-
-    message = update.message
-
-    # قبول فایل به صورت Document
-    if not message.document:
-        await message.reply_text(
-            "❌ لطفاً فایل را به صورت Document ارسال کن.\n\n"
-            "مثلاً PDF را به صورت فایل بفرست، نه عکس."
-        )
-
-        return ADMIN_FILE
-
-    data = context.user_data.get("admin_upload")
-
-    if not data:
-        await message.reply_text(
-            "❌ اطلاعات مسیر فایل پیدا نشد.\n"
-            "دوباره از پنل مدیریت شروع کن."
-        )
-
-        return ConversationHandler.END
-
-    field = data["field"]
-    grade = data["grade"]
-    lesson_type = data["lesson_type"]
-    subject_code = data["subject_code"]
-    year = data["year"]
-
-    # -----------------------------------------------------
-    # Copy to archive channel
-    # -----------------------------------------------------
-
-    try:
-        copied = await context.bot.copy_message(
-            chat_id=ARCHIVE_CHAT_ID,
-            from_chat_id=message.chat_id,
-            message_id=message.message_id,
-        )
-
-        archive_message_id = copied.message_id
-
-    except Exception:
-        logger.exception("Archive copy error")
-
-        await message.reply_text(
-            "❌ فایل دریافت شد ولی نتوانستم آن را به "
-            "کانال آرشیو منتقل کنم.\n\n"
-            "دسترسی ربات به کانال آرشیو را بررسی کن."
-        )
-
-        return ConversationHandler.END
-
-    # -----------------------------------------------------
-    # Read GitHub
-    # -----------------------------------------------------
-
-    files, sha = github_get_files()
-
-    key = make_file_key(
-        field,
-        grade,
-        lesson_type,
-        subject_code,
-        year,
-    )
-
-    # -----------------------------------------------------
-    # Delete previous archive message if replacing
-    # -----------------------------------------------------
-
-    old_item = files.get(key)
-
-    if old_item:
-        old_archive_id = old_item.get("archive_message_id")
-
-        if old_archive_id:
-            try:
-                await context.bot.delete_message(
-                    chat_id=ARCHIVE_CHAT_ID,
-                    message_id=int(old_archive_id),
-                )
-            except Exception:
-                logger.warning(
-                    "Could not delete old archive message."
-                )
-
-    # -----------------------------------------------------
-    # Subject name
-    # -----------------------------------------------------
-
-    subject_name = next(
-        (
-            name
-            for name, code in SUBJECTS.get(
-                (field, grade, lesson_type),
-                [],
-            )
-            if code == subject_code
-        ),
-        subject_code,
-    )
-
-    # -----------------------------------------------------
-    # Save metadata
-    # -----------------------------------------------------
-
-    files[key] = {
-        "field": field,
-        "field_name": FIELDS[field],
-        "grade": grade,
-        "grade_name": GRADES[grade],
-        "lesson_type": lesson_type,
-        "lesson_type_name": TYPES[lesson_type],
-        "subject_code": subject_code,
-        "subject_name": subject_name,
-        "year": year,
-        "archive_chat_id": ARCHIVE_CHAT_ID,
-        "archive_message_id": archive_message_id,
-        "file_name": message.document.file_name,
-        "updated_by": update.effective_user.id,
-    }
-
-    success = github_save_files(
-        files,
-        sha,
-    )
-
-    if not success:
-        # اگر GitHub ذخیره نشد، فایل آرشیو را پاک می‌کنیم
-        # تا دیتای نصفه باقی نماند.
-        try:
-            await context.bot.delete_message(
-                chat_id=ARCHIVE_CHAT_ID,
-                message_id=archive_message_id,
-            )
-        except Exception:
-            pass
-
-        await message.reply_text(
-            "❌ فایل در آرشیو قرار گرفت اما ذخیره اطلاعات "
-            "در GitHub ناموفق بود.\n\n"
-            "فایل نهایی ثبت نشد. دوباره تلاش کن."
-        )
-
-        return ConversationHandler.END
-
-    # -----------------------------------------------------
-    # Done
-    # -----------------------------------------------------
-
-    context.user_data.pop("admin_upload", None)
-
-    replace_text = (
-        "🔄 فایل قبلی با موفقیت جایگزین شد."
-        if old_item
-        else
-        "🆕 فایل جدید با موفقیت ثبت شد."
-    )
-
-    await message.reply_text(
-        "✅ فایل با موفقیت ثبت شد.\n\n"
-        f"{FIELDS[field]}\n"
-        f"{GRADES[grade]}\n"
-        f"{TYPES[lesson_type]}\n"
-        f"📚 {subject_name}\n"
-        f"📅 {year}\n\n"
-        f"{replace_text}",
-        reply_markup=admin_menu(),
-    )
-
-    return ConversationHandler.END
-
-
-async def admin_cancel(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    context.user_data.pop("admin_upload", None)
-
-    if update.callback_query:
-        await update.callback_query.answer()
-
-        await update.callback_query.edit_message_text(
-            "❌ عملیات لغو شد.",
-            reply_markup=admin_menu(),
-        )
-
-    return ConversationHandler.END
-
-
-# =========================================================
-# ADMIN CALLBACKS
-# =========================================================
-
-async def admin_field_callback(update, context):
-    if not is_admin(update):
-        return
-
     query = update.callback_query
-    await query.answer()
-
-    field = query.data.split("_")[1]
-
-    await query.edit_message_text(
-        f"{FIELDS[field]}\n\n"
-        "پایه را انتخاب کن:",
-        reply_markup=admin_grades_keyboard(field),
-    )
-
-
-async def admin_grade_callback(update, context):
-    if not is_admin(update):
-        return
-
-    query = update.callback_query
-    await query.answer()
-
-    _, field, grade = query.data.split("_")
-
-    await query.edit_message_text(
-        f"{FIELDS[field]} → {GRADES[grade]}\n\n"
-        "نوع درس را انتخاب کن:",
-        reply_markup=admin_types_keyboard(
-            field,
-            grade,
-        ),
-    )
-
-
-async def admin_type_callback(update, context):
-    if not is_admin(update):
-        return
-
-    query = update.callback_query
-    await query.answer()
-
-    _, field, grade, lesson_type = query.data.split("_")
-
-    await query.edit_message_text(
-        f"{FIELDS[field]}\n"
-        f"{GRADES[grade]}\n"
-        f"{TYPES[lesson_type]}\n\n"
-        "درس را انتخاب کن:",
-        reply_markup=admin_subjects_keyboard(
-            field,
-            grade,
-            lesson_type,
-        ),
-    )
-
-
-async def admin_subject_callback(update, context):
-    if not is_admin(update):
-        return
-
-    query = update.callback_query
-    await query.answer()
-
-    parts = query.data.split("_")
-
-    field = parts[1]
-    grade = parts[2]
-    lesson_type = parts[3]
-    subject_code = "_".join(parts[4:])
-
-    subject_name = next(
-        (
-            name
-            for name, code in SUBJECTS.get(
-                (field, grade, lesson_type),
-                [],
-            )
-            if code == subject_code
-        ),
-        subject_code,
-    )
-
-    await query.edit_message_text(
-        f"📚 {subject_name}\n\n"
-        "سال فایل را انتخاب کن:",
-        reply_markup=admin_years_keyboard(
-            field,
-            grade,
-            lesson_type,
-            subject_code,
-        ),
-    )
-
-
-async def admin_year_callback(update, context):
-    if not is_admin(update):
-        return
-
-    query = update.callback_query
-    await query.answer()
-
-    parts = query.data.split("_")
-
-    field = parts[1]
-    grade = parts[2]
-    lesson_type = parts[3]
-    year = parts[-1]
-
-    subject_code = "_".join(parts[4:-1])
-
-    subject_name = next(
-        (
-            name
-            for name, code in SUBJECTS.get(
-                (field, grade, lesson_type),
-                [],
-            )
-            if code == subject_code
-        ),
-        subject_code,
-    )
-
-    context.user_data["admin_upload"] = {
-        "field": field,
-        "grade": grade,
-        "lesson_type": lesson_type,
-        "subject_code": subject_code,
-        "year": year,
-    }
-
-    await query.edit_message_text(
-        "📤 آماده دریافت فایل\n\n"
-        f"{FIELDS[field]}\n"
-        f"{GRADES[grade]}\n"
-        f"{TYPES[lesson_type]}\n"
-        f"📚 {subject_name}\n"
-        f"📅 {year}\n\n"
-        "حالا فایل PDF را به صورت Document همین‌جا ارسال کن.\n\n"
-        "⚠️ فایل را به صورت «File / Document» بفرست.",
-    )
-
-    return ADMIN_FILE
-
-
-# =========================================================
-# ADMIN STATUS
-# =========================================================
-
-async def admin_status(update, context):
-    if not is_admin(update):
-        return
-
-    query = update.callback_query
-    await query.answer()
-
-    files, _ = github_get_files()
-
-    total = len(files)
-
-    await query.edit_message_text(
-        "📊 وضعیت فایل‌ها\n\n"
-        f"تعداد فایل‌های ثبت‌شده: {total}\n\n"
-        "اطلاعات فایل‌ها در GitHub ذخیره شده و "
-        "خود فایل‌ها در کانال آرشیو خصوصی نگهداری می‌شوند.",
-        reply_markup=admin_menu(),
-    )
-
-
-# =========================================================
-# USER CALLBACK HANDLER
-# =========================================================
-
-async def user_callback(update, context):
-    query = update.callback_query
-
     await query.answer()
 
     data = query.data
 
-    # -----------------------------------------------------
-    # HOME
-    # -----------------------------------------------------
+    # ---------------- HOME ----------------
 
     if data == "home":
         await query.edit_message_text(
@@ -1310,20 +636,15 @@ async def user_callback(update, context):
         )
         return
 
-    # -----------------------------------------------------
-    # FINAL EXAMS
-    # -----------------------------------------------------
+    # ---------------- FINAL EXAMS ----------------
 
     if data == "final_exams":
-        await show_final_exams(query)
+        await show_final_fields(query)
         return
 
     if data.startswith("ufield_"):
-        field = data.split("_")[1]
-
-        if field in FIELDS:
-            await show_field(query, field)
-
+        field = data.replace("ufield_", "", 1)
+        await show_user_grades(query, field)
         return
 
     if data.startswith("ugrade_"):
@@ -1333,12 +654,11 @@ async def user_callback(update, context):
             field = parts[1]
             grade = parts[2]
 
-            if field in FIELDS and grade in GRADES:
-                await show_grade(
-                    query,
-                    field,
-                    grade,
-                )
+            await show_user_types(
+                query,
+                field,
+                grade,
+            )
 
         return
 
@@ -1348,74 +668,67 @@ async def user_callback(update, context):
         if len(parts) == 4:
             field = parts[1]
             grade = parts[2]
-            lesson_type = parts[3]
+            type_code = parts[3]
 
-            if (
-                field in FIELDS
-                and grade in GRADES
-                and lesson_type in TYPES
-            ):
-                await show_type(
-                    query,
-                    field,
-                    grade,
-                    lesson_type,
-                )
+            await show_user_subjects(
+                query,
+                field,
+                grade,
+                type_code,
+            )
 
         return
 
     if data.startswith("usub_"):
         parts = data.split("_")
 
-        field = parts[1]
-        grade = parts[2]
-        lesson_type = parts[3]
-        subject_code = "_".join(parts[4:])
+        if len(parts) >= 5:
+            field = parts[1]
+            grade = parts[2]
+            type_code = parts[3]
+            subject_code = "_".join(parts[4:])
 
-        await show_subject(
-            query,
-            field,
-            grade,
-            lesson_type,
-            subject_code,
-        )
+            await show_user_years(
+                query,
+                field,
+                grade,
+                type_code,
+                subject_code,
+            )
 
         return
 
     if data.startswith("uyear_"):
         parts = data.split("_")
 
-        field = parts[1]
-        grade = parts[2]
-        lesson_type = parts[3]
-        year = parts[-1]
+        if len(parts) >= 6:
+            field = parts[1]
+            grade = parts[2]
+            type_code = parts[3]
+            year = parts[-1]
+            subject_code = "_".join(parts[4:-1])
 
-        subject_code = "_".join(parts[4:-1])
-
-        await send_exam_file(
-            query,
-            context,
-            field,
-            grade,
-            lesson_type,
-            subject_code,
-            year,
-        )
+            await send_final_file(
+                query,
+                field,
+                grade,
+                type_code,
+                subject_code,
+                year,
+            )
 
         return
 
-    # -----------------------------------------------------
-    # PLACEHOLDERS
-    # -----------------------------------------------------
+    # ---------------- OTHER MAIN SECTIONS ----------------
 
     if data == "mock_exams":
         await query.edit_message_text(
             "📝 آزمون‌های آزمایشی مجموعه\n\n"
-            "این بخش به‌زودی فعال می‌شود.",
+            "این بخش به‌زودی تکمیل می‌شود.",
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
-                        "↩️ بازگشت",
+                        "🔙 بازگشت",
                         callback_data="home",
                     )
                 ]
@@ -1426,11 +739,11 @@ async def user_callback(update, context):
     if data == "notes":
         await query.edit_message_text(
             "📖 جزوات\n\n"
-            "این بخش به‌زودی فعال می‌شود.",
+            "جزوات موجود در این بخش نمایش داده می‌شوند.",
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
-                        "↩️ بازگشت",
+                        "🔙 بازگشت",
                         callback_data="home",
                     )
                 ]
@@ -1441,11 +754,11 @@ async def user_callback(update, context):
     if data == "news":
         await query.edit_message_text(
             "📢 اطلاعیه‌ها\n\n"
-            "این بخش به‌زودی فعال می‌شود.",
+            "اطلاعیه‌های آکادمی در این بخش قرار می‌گیرند.",
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
-                        "↩️ بازگشت",
+                        "🔙 بازگشت",
                         callback_data="home",
                     )
                 ]
@@ -1455,35 +768,703 @@ async def user_callback(update, context):
 
 
 # =========================================================
-# ADMIN CALLBACK ROUTER
+# ADMIN PANEL
 # =========================================================
 
-async def admin_callback_router(update, context):
-    data = update.callback_query.data
+async def admin_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text(
+            "⛔ دسترسی ندارید."
+        )
+        return
 
-    if not is_admin(update):
-        await update.callback_query.answer(
+    await update.message.reply_text(
+        "👑 پنل مدیریت\n\n"
+        "عملیات موردنظر را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "➕ افزودن فایل",
+                    callback_data="admin_add",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📢 افزودن اطلاعیه",
+                    callback_data="admin_add_news",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📋 وضعیت",
+                    callback_data="admin_status",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏠 منوی اصلی",
+                    callback_data="home",
+                )
+            ],
+        ]),
+    )
+
+
+async def admin_panel_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    if not is_admin(update.effective_user.id):
+        await query.answer(
             "⛔ دسترسی ندارید.",
             show_alert=True,
         )
         return
 
+    await query.edit_message_text(
+        "👑 پنل مدیریت\n\n"
+        "عملیات موردنظر را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "➕ افزودن فایل",
+                    callback_data="admin_add",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📢 افزودن اطلاعیه",
+                    callback_data="admin_add_news",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📋 وضعیت",
+                    callback_data="admin_status",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏠 منوی اصلی",
+                    callback_data="home",
+                )
+            ],
+        ]),
+    )
+
+
+# =========================================================
+# ADMIN ADD FILE
+# =========================================================
+
+ADMIN_FILE = 1
+
+
+async def admin_add_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    if not is_admin(update.effective_user.id):
+        await query.answer(
+            "⛔ دسترسی ندارید.",
+            show_alert=True,
+        )
+        return ConversationHandler.END
+
+    await query.edit_message_text(
+        "➕ افزودن محتوا\n\n"
+        "بخش موردنظر را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "📚 امتحان‌های نهایی",
+                    callback_data="afinal",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📝 آزمون‌های آزمایشی",
+                    callback_data="amock",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📖 جزوات",
+                    callback_data="anotes",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 بازگشت",
+                    callback_data="admin_panel",
+                )
+            ],
+        ]),
+    )
+
+    return ConversationHandler.END
+
+
+# =========================================================
+# ADMIN FINAL EXAM UPLOAD FLOW
+# =========================================================
+
+async def admin_final_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    if not is_admin(update.effective_user.id):
+        return ConversationHandler.END
+
+    await query.edit_message_text(
+        "📚 افزودن امتحان نهایی\n\n"
+        "رشته را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "🧬 تجربی",
+                    callback_data="afield_exp",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📐 ریاضی",
+                    callback_data="afield_math",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📚 انسانی",
+                    callback_data="afield_hum",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 بازگشت",
+                    callback_data="admin_add",
+                )
+            ],
+        ]),
+    )
+
+
+async def admin_field_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    field = query.data.replace(
+        "afield_",
+        "",
+        1,
+    )
+
+    if field not in FIELDS:
+        return
+
+    await query.edit_message_text(
+        "پایه را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "یازدهم",
+                    callback_data=f"agrade_{field}_11",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "دوازدهم",
+                    callback_data=f"agrade_{field}_12",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 بازگشت",
+                    callback_data="afinal",
+                )
+            ],
+        ]),
+    )
+
+
+async def admin_grade_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split("_")
+
+    field = parts[1]
+    grade = parts[2]
+
+    await query.edit_message_text(
+        "نوع درس را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "📘 عمومی",
+                    callback_data=(
+                        f"atype_{field}_{grade}_general"
+                    ),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📕 اختصاصی",
+                    callback_data=(
+                        f"atype_{field}_{grade}_special"
+                    ),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 بازگشت",
+                    callback_data=f"afield_{field}",
+                )
+            ],
+        ]),
+    )
+
+
+async def admin_type_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split("_")
+
+    field = parts[1]
+    grade = parts[2]
+    type_code = parts[3]
+
+    subjects = SUBJECTS.get(
+        (field, grade, type_code),
+        [],
+    )
+
+    keyboard = []
+
+    for code, title in subjects:
+        keyboard.append([
+            InlineKeyboardButton(
+                title,
+                callback_data=(
+                    f"asub_{field}_{grade}_"
+                    f"{type_code}_{code}"
+                ),
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            "🔙 بازگشت",
+            callback_data=(
+                f"agrade_{field}_{grade}"
+            ),
+        )
+    ])
+
+    await query.edit_message_text(
+        "📚 درس را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+async def admin_subject_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split("_")
+
+    field = parts[1]
+    grade = parts[2]
+    type_code = parts[3]
+    subject_code = "_".join(parts[4:])
+
+    context.user_data["upload_meta"] = {
+        "category": "final",
+        "field": field,
+        "grade": grade,
+        "type": type_code,
+        "subject": subject_code,
+    }
+
+    keyboard = []
+
+    for year in YEARS:
+        keyboard.append([
+            InlineKeyboardButton(
+                year,
+                callback_data=f"ayear_{year}",
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            "❌ لغو",
+            callback_data="admin_cancel",
+        )
+    ])
+
+    await query.edit_message_text(
+        "📅 سال امتحان را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+    return ADMIN_FILE
+
+
+async def admin_year_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    if not is_admin(update.effective_user.id):
+        return ConversationHandler.END
+
+    year = query.data.replace(
+        "ayear_",
+        "",
+        1,
+    )
+
+    meta = context.user_data.get("upload_meta")
+
+    if not meta:
+        await query.edit_message_text(
+            "❌ اطلاعات آپلود پیدا نشد."
+        )
+        return ConversationHandler.END
+
+    meta["year"] = year
+    context.user_data["upload_meta"] = meta
+
+    await query.edit_message_text(
+        "📎 حالا فایل را به صورت PDF یا Document ارسال کن.\n\n"
+        "فایل جدید جای فایل قبلی همین بخش را می‌گیرد.",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "❌ لغو",
+                    callback_data="admin_cancel",
+                )
+            ]
+        ]),
+    )
+
+    return ADMIN_FILE
+
+
+async def admin_receive_file(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    if not is_admin(update.effective_user.id):
+        return ConversationHandler.END
+
+    document = update.message.document
+
+    if not document:
+        await update.message.reply_text(
+            "❌ لطفاً فایل را به صورت Document ارسال کن."
+        )
+        return ADMIN_FILE
+
+    meta = context.user_data.get("upload_meta")
+
+    if not meta:
+        await update.message.reply_text(
+            "❌ اطلاعات آپلود پیدا نشد. دوباره از پنل شروع کن."
+        )
+        return ConversationHandler.END
+
+    # -----------------------------------------
+    # دریافت اطلاعات فایل
+    # -----------------------------------------
+
+    old_data = load_files()
+
+    key = (
+        f"final|{meta['field']}|{meta['grade']}|"
+        f"{meta['type']}|{meta['subject']}|{meta['year']}"
+    )
+
+    old_item = old_data.get(key)
+
+    # -----------------------------------------
+    # حذف فایل قبلی از آرشیو
+    # -----------------------------------------
+
+    if old_item and old_item.get("message_id"):
+        try:
+            await context.bot.delete_message(
+                chat_id=ARCHIVE_CHAT_ID,
+                message_id=int(old_item["message_id"]),
+            )
+        except Exception as e:
+            logger.warning(
+                "Could not delete old archive message: %s",
+                e,
+            )
+
+    # -----------------------------------------
+    # کپی فایل به کانال آرشیو
+    # -----------------------------------------
+
+    copied = await context.bot.copy_message(
+        chat_id=ARCHIVE_CHAT_ID,
+        from_chat_id=update.effective_chat.id,
+        message_id=update.message.message_id,
+    )
+
+    # -----------------------------------------
+    # ذخیره metadata
+    # -----------------------------------------
+
+    old_data[key] = {
+        "category": "final",
+        "field": meta["field"],
+        "grade": meta["grade"],
+        "type": meta["type"],
+        "subject": meta["subject"],
+        "year": meta["year"],
+        "message_id": copied.message_id,
+        "file_name": document.file_name,
+        "file_size": document.file_size,
+    }
+
+    if not save_files(old_data):
+        await update.message.reply_text(
+            "⚠️ فایل به آرشیو منتقل شد، "
+            "ولی ذخیره اطلاعات در GitHub ناموفق بود."
+        )
+        return ConversationHandler.END
+
+    await update.message.reply_text(
+        "✅ فایل با موفقیت اضافه شد.\n\n"
+        "📦 فایل در آرشیو ذخیره شد.\n"
+        "🔄 اگر فایل قبلی وجود داشت، جایگزین شد.\n"
+        "🗂 اطلاعات در GitHub ذخیره شد."
+    )
+
+    context.user_data.pop("upload_meta", None)
+
+    return ConversationHandler.END
+
+
+async def admin_cancel(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data.pop(
+        "upload_meta",
+        None,
+    )
+
+    await query.edit_message_text(
+        "❌ عملیات لغو شد.",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "👑 پنل مدیریت",
+                    callback_data="admin_panel",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏠 منوی اصلی",
+                    callback_data="home",
+                )
+            ],
+        ]),
+    )
+
+    return ConversationHandler.END
+
+
+# =========================================================
+# OTHER ADMIN CONTENT
+# =========================================================
+
+async def admin_other_content(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    if not is_admin(update.effective_user.id):
+        return
+
+    category = query.data
+
+    if category == "amock":
+        title = "📝 آزمون‌های آزمایشی"
+    elif category == "anotes":
+        title = "📖 جزوات"
+    else:
+        title = "بخش"
+
+    await query.edit_message_text(
+        f"{title}\n\n"
+        "این بخش آماده دریافت ساختار اختصاصی خودش است.\n\n"
+        "برای این قسمت می‌توانیم دسته‌بندی، درس، پایه، "
+        "سال و فایل‌های متعدد تعریف کنیم.",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "🔙 بازگشت",
+                    callback_data="admin_add",
+                )
+            ]
+        ]),
+    )
+
+
+async def admin_add_news(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    if not is_admin(update.effective_user.id):
+        return
+
+    await query.edit_message_text(
+        "📢 افزودن اطلاعیه\n\n"
+        "برای اضافه‌کردن اطلاعیه، متن اطلاعیه را ارسال کن.\n\n"
+        "ساختار اطلاعیه‌ها در GitHub ذخیره خواهد شد.",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "🔙 بازگشت",
+                    callback_data="admin_panel",
+                )
+            ]
+        ]),
+    )
+
+
+# =========================================================
+# ADMIN STATUS
+# =========================================================
+
+async def admin_status(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    if not is_admin(update.effective_user.id):
+        return
+
+    data = load_files()
+
+    final_count = 0
+    mock_count = 0
+    notes_count = 0
+    news_count = 0
+
+    for item in data.values():
+
+        category = item.get("category")
+
+        if category == "final":
+            final_count += 1
+        elif category == "mock":
+            mock_count += 1
+        elif category == "notes":
+            notes_count += 1
+        elif category == "news":
+            news_count += 1
+
+    await query.edit_message_text(
+        "📋 وضعیت ربات\n\n"
+        f"📚 امتحان‌های نهایی: {final_count}\n"
+        f"📝 آزمون‌های آزمایشی: {mock_count}\n"
+        f"📖 جزوات: {notes_count}\n"
+        f"📢 اطلاعیه‌ها: {news_count}\n\n"
+        f"📦 مجموع آیتم‌ها: {len(data)}",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "🔄 بروزرسانی",
+                    callback_data="admin_status",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 پنل مدیریت",
+                    callback_data="admin_panel",
+                )
+            ],
+        ]),
+    )
+
+
+# =========================================================
+# ADMIN CALLBACK ROUTER
+# =========================================================
+
+async def admin_callback_router(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+
+    if not is_admin(update.effective_user.id):
+        await query.answer(
+            "⛔ دسترسی ندارید.",
+            show_alert=True,
+        )
+        return
+
+    data = query.data
+
     if data == "admin_panel":
-        await admin_panel(
+        await admin_panel_callback(
             update,
             context,
         )
         return
 
     if data == "admin_add":
-        await admin_add_start(
+        await admin_add_callback(
             update,
             context,
         )
         return
 
-    if data == "admin_status":
-        await admin_status(
+    if data == "afinal":
+        await admin_final_callback(
             update,
             context,
         )
@@ -1517,8 +1498,22 @@ async def admin_callback_router(update, context):
         )
         return
 
-    if data.startswith("ayear_"):
-        await admin_year_callback(
+    if data == "amock" or data == "anotes":
+        await admin_other_content(
+            update,
+            context,
+        )
+        return
+
+    if data == "admin_add_news":
+        await admin_add_news(
+            update,
+            context,
+        )
+        return
+
+    if data == "admin_status":
+        await admin_status(
             update,
             context,
         )
@@ -1526,31 +1521,45 @@ async def admin_callback_router(update, context):
 
 
 # =========================================================
-# /ADMIN COMMAND
+# HEALTH SERVER FOR RENDER
 # =========================================================
 
-async def admin_command(update, context):
-    if not is_admin(update):
-        await update.message.reply_text(
-            "⛔ شما دسترسی مدیریت ندارید."
+class HealthHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header(
+            "Content-Type",
+            "text/plain; charset=utf-8",
         )
+        self.end_headers()
+        self.wfile.write(
+            b"Movahed Telegram Bot is running."
+        )
+
+    def log_message(self, format, *args):
         return
 
-    await update.message.reply_text(
-        "👑 پنل مدیریت",
-        reply_markup=admin_menu(),
+
+def run_health_server():
+    port = int(
+        os.environ.get(
+            "PORT",
+            "10000",
+        )
     )
 
-
-# =========================================================
-# ERROR HANDLER
-# =========================================================
-
-async def error_handler(update, context):
-    logger.exception(
-        "Unhandled error: %s",
-        context.error,
+    server = HTTPServer(
+        ("0.0.0.0", port),
+        HealthHandler,
     )
+
+    logger.info(
+        "Health server running on port %s",
+        port,
+    )
+
+    server.serve_forever()
 
 
 # =========================================================
@@ -1561,12 +1570,12 @@ def main():
 
     if not BOT_TOKEN:
         raise RuntimeError(
-            "BOT_TOKEN environment variable is missing."
+            "BOT_TOKEN is not configured."
         )
 
     if not GITHUB_TOKEN:
         raise RuntimeError(
-            "GITHUB_TOKEN environment variable is missing."
+            "GITHUB_TOKEN is not configured."
         )
 
     # Render health server
@@ -1582,40 +1591,46 @@ def main():
         .build()
     )
 
-    # -----------------------------------------------------
-    # Admin upload conversation
-    # -----------------------------------------------------
+    # =====================================================
+    # ADMIN UPLOAD CONVERSATION
+    # =====================================================
 
     admin_upload_conversation = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(
-                admin_year_callback,
-                pattern=r"^ayear_",
+                admin_subject_callback,
+                pattern=r"^asub_",
             )
         ],
 
         states={
             ADMIN_FILE: [
+                CallbackQueryHandler(
+                    admin_year_callback,
+                    pattern=r"^ayear_",
+                ),
                 MessageHandler(
                     filters.Document.ALL,
                     admin_receive_file,
-                )
+                ),
+                CallbackQueryHandler(
+                    admin_cancel,
+                    pattern=r"^admin_cancel$",
+                ),
             ]
         },
 
         fallbacks=[
+            CommandHandler(
+                "cancel",
+                admin_cancel,
+            ),
             CallbackQueryHandler(
                 admin_cancel,
                 pattern=r"^admin_cancel$",
             ),
-            CommandHandler(
-                "start",
-                start,
-            ),
         ],
 
-        per_user=True,
-        per_chat=True,
         allow_reentry=True,
     )
 
@@ -1623,9 +1638,9 @@ def main():
         admin_upload_conversation
     )
 
-    # -----------------------------------------------------
-    # Commands
-    # -----------------------------------------------------
+    # =====================================================
+    # COMMANDS
+    # =====================================================
 
     application.add_handler(
         CommandHandler(
@@ -1636,44 +1651,53 @@ def main():
 
     application.add_handler(
         CommandHandler(
+            "home",
+            home_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
             "admin",
             admin_command,
         )
     )
 
-    # -----------------------------------------------------
-    # Admin callback router
-    # -----------------------------------------------------
+    # =====================================================
+    # ADMIN CALLBACKS
+    # =====================================================
 
     application.add_handler(
         CallbackQueryHandler(
             admin_callback_router,
-            pattern=r"^(admin_panel|admin_add|admin_status|afield_|agrade_|atype_|asub_)",
+            pattern=(
+                r"^(admin_panel|admin_add|afinal|"
+                r"afield_|agrade_|atype_|asub_|"
+                r"amock|anotes|admin_add_news|admin_status)"
+            ),
         )
     )
 
-    # -----------------------------------------------------
-    # User callbacks
-    # -----------------------------------------------------
+    # =====================================================
+    # USER CALLBACKS
+    # =====================================================
 
+    # نکته مهم:
+    # اینجا عمداً $ نداریم تا ufield_exp و بقیه
+    # callbackهای دارای ادامه هم شناسایی شوند.
     application.add_handler(
         CallbackQueryHandler(
             user_callback,
-            pattern=r"^(home|final_exams|ufield_|ugrade_|utype_|usub_|uyear_|mock_exams|notes|news)$",
+            pattern=(
+                r"^(home|final_exams|"
+                r"ufield_|ugrade_|utype_|usub_|uyear_|"
+                r"mock_exams|notes|news)"
+            ),
         )
     )
 
-    # -----------------------------------------------------
-    # Error handler
-    # -----------------------------------------------------
-
-    application.add_error_handler(
-        error_handler
-    )
-
     logger.info(
-        "Movahed bot started. Admin IDs: %s",
-        ADMIN_IDS,
+        "Movahed Telegram Bot started successfully."
     )
 
     application.run_polling(
